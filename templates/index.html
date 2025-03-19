@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>视频处理客户端</title>
+    <link href="https://cdn.bootcdn.net/ajax/libs/twitter-bootstrap/5.1.3/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .progress-container {
+            margin: 2rem 0;
+            display: none;
+        }
+        #downloadSection {
+            margin-top: 2rem;
+        }
+        /* 添加禁用状态的样式 */
+        .form-disabled {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+        /* 添加尺寸不一致警告样式 */
+        .size-warning {
+            color: #dc3545;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+<div class="container py-5">
+    <h1 class="mb-4">视频处理客户端</h1>
+    
+    <div class="card mb-4">
+        <div class="card-body">
+            <form id="uploadForm">
+                <div class="row">
+                    <!-- 左侧：选择视频文件 -->
+                    <div class="col-md-6">
+                        <div class="mb-3 p-3 border rounded h-100">
+                            <label class="form-label">选择视频文件</label>
+                            <input type="file" class="form-control" id="videoFile" accept="video/*">
+                            <!-- 修改视频预览区域，使用video元素替代canvas -->
+                            <div id="videoPreview" class="mt-3" style="display: none;">
+                                <h5>视频预览 <span id="videoSize" class="text-muted fs-6"></span></h5>
+                                <video id="videoThumbnail" width="50%" controls style="border: 1px solid #ddd;"></video>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 右侧：背景设置 -->
+                    <div class="col-md-6">
+                        <div class="mb-3 p-3 border rounded h-100">
+                            <label class="form-label">背景设置</label>
+                            <!-- 修改为并排显示的背景类型选择 -->
+                            <div class="d-flex mb-2">
+                                <div class="form-check me-3">
+                                    <input class="form-check-input" type="radio" name="bgType" id="bgTypeColor" value="color" checked>
+                                    <label class="form-check-label" for="bgTypeColor">
+                                        颜色背景
+                                    </label>
+                                </div>
+                                <div class="form-check me-3">
+                                    <input class="form-check-input" type="radio" name="bgType" id="bgTypeImage" value="image">
+                                    <label class="form-check-label" for="bgTypeImage">
+                                        图片背景
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="bgType" id="bgTypeVideo" value="video">
+                                    <label class="form-check-label" for="bgTypeVideo">
+                                        视频背景
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- 背景设置容器保持不变 -->
+                            <div id="bgColorContainer" class="mt-2">
+                                <input type="color" class="form-control form-control-color" id="bgColor" 
+                                       title="选择背景颜色" style="max-width: 100px" value="#00FF00">
+                            </div>
+                            <!-- 其他背景容器保持不变 -->
+                            <div id="bgImageContainer" class="mt-2" style="display: none;">
+                                <input type="file" class="form-control" id="bgImage" accept="image/*">
+                                <!-- 添加背景图片预览区域 -->
+                                <div id="bgImagePreview" class="mt-2" style="display: none;">
+                                    <h5>图片预览 <span id="bgImageSize" class="text-muted fs-6"></span></h5>
+                                    <img id="bgImageThumbnail" style="max-width: 50%; border: 1px solid #ddd;" />
+                                </div>
+                            </div>
+                            <div id="bgVideoContainer" class="mt-2" style="display: none;">
+                                <input type="file" class="form-control" id="bgVideo" accept="video/*">
+                                <!-- 添加背景视频预览功能 -->
+                                <div id="bgVideoPreview" class="mt-2" style="display: none;">
+                                    <h5>视频预览 <span id="bgVideoSize" class="text-muted fs-6"></span></h5>
+                                    <video id="bgVideoThumbnail" width="50%" controls style="border: 1px solid #ddd;"></video>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 按钮占据整行宽度 -->
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary w-100">开始处理</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="progress-container">
+        <div class="progress mb-3">
+            <div id="uploadProgress" class="progress-bar" role="progressbar" style="width: 0%"></div>
+        </div>
+        <div class="progress">
+            <div id="taskProgress" class="progress-bar progress-bar-striped" role="progressbar" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <div id="downloadSection" class="text-center">
+        <a id="downloadLink" class="btn btn-success" style="display: none">
+            下载处理后的视频
+        </a>
+    </div>
+</div>
+
+<script src="https://cdn.bootcdn.net/ajax/libs/spark-md5/3.0.2/spark-md5.min.js"></script>
+<script>
+// 使用当前浏览器地址作为 BASE_URL
+const BASE_URL = window.location.origin;
+
+// 添加视频预览功能 - 使用video元素直接显示
+document.getElementById('videoFile').addEventListener('change', function() {
+    const file = this.files[0];
+    if (file) {
+        // 获取视频预览元素
+        const videoPreview = document.getElementById('videoPreview');
+        const videoElement = document.getElementById('videoThumbnail');
+        
+        // 设置视频源
+        videoElement.src = URL.createObjectURL(file);
+        
+        // 显示预览区域
+        videoPreview.style.display = 'block';
+        
+        // 视频加载完成后暂停在第一帧并显示尺寸，然后自动开始上传处理
+        videoElement.onloadeddata = function() {
+            this.currentTime = 0;
+            this.pause();
+            // 显示视频尺寸
+            document.getElementById('videoSize').textContent = `(${this.videoWidth}×${this.videoHeight})`;
+            
+            // 检查尺寸是否一致
+            checkSizeConsistency();
+        };
+        
+        // 添加错误处理
+        videoElement.onerror = function() {
+            console.error('视频加载失败', this.error);
+            alert('视频预览加载失败: ' + (this.error ? this.error.message : '未知错误'));
+        };
+    }
+});
+
+// 显示选择的文件名和预览图片
+document.getElementById('bgImage').addEventListener('change', function() {
+    if (this.files.length > 0) {
+        const file = this.files[0];
+        
+        // 显示图片预览
+        const imgPreview = document.getElementById('bgImagePreview');
+        const imgElement = document.getElementById('bgImageThumbnail');
+        
+        // 设置图片源
+        imgElement.src = URL.createObjectURL(file);
+        
+        // 显示预览区域
+        imgPreview.style.display = 'block';
+        
+        // 图片加载完成后显示尺寸
+        imgElement.onload = function() {
+            // 显示图片尺寸
+            document.getElementById('bgImageSize').textContent = `(${this.naturalWidth}×${this.naturalHeight})`;
+            URL.revokeObjectURL(this.src);
+            
+            // 检查尺寸是否一致
+            checkSizeConsistency();
+        };
+        
+        // 添加错误处理
+        imgElement.onerror = function() {
+            console.error('图片加载失败');
+            alert('背景图片预览加载失败');
+        };
+    }
+});
+
+document.getElementById('bgVideo').addEventListener('change', function() {
+    if (this.files.length > 0) {
+        const file = this.files[0];
+        
+        // 显示视频预览
+        const videoPreview = document.getElementById('bgVideoPreview');
+        const videoElement = document.getElementById('bgVideoThumbnail');
+        
+        // 设置视频源
+        videoElement.src = URL.createObjectURL(file);
+        
+        // 显示预览区域
+        videoPreview.style.display = 'block';
+        
+        // 视频加载完成后暂停在第一帧并显示尺寸
+        videoElement.onloadeddata = function() {
+            this.currentTime = 0;
+            this.pause();
+            // 显示视频尺寸
+            document.getElementById('bgVideoSize').textContent = `(${this.videoWidth}×${this.videoHeight})`;
+            
+            // 检查尺寸是否一致
+            checkSizeConsistency();
+        };
+        
+        // 添加错误处理
+        videoElement.onerror = function() {
+            console.error('视频加载失败', this.error);
+            alert('背景视频预览加载失败: ' + (this.error ? this.error.message : '未知错误'));
+        };
+    }
+});
+
+// 添加背景类型切换逻辑
+document.querySelectorAll('input[name="bgType"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        // 隐藏所有背景容器
+        document.getElementById('bgColorContainer').style.display = 'none';
+        document.getElementById('bgImageContainer').style.display = 'none';
+        document.getElementById('bgVideoContainer').style.display = 'none';
+        
+        // 显示选中的背景容器
+        if (this.value === 'color') {
+            document.getElementById('bgColorContainer').style.display = 'block';
+        } else if (this.value === 'image') {
+            document.getElementById('bgImageContainer').style.display = 'block';
+        } else if (this.value === 'video') {
+            document.getElementById('bgVideoContainer').style.display = 'block';
+        }
+        
+        // 检查尺寸是否一致
+        checkSizeConsistency();
+    });
+});
+
+// 添加尺寸一致性检查函数
+function checkSizeConsistency() {
+    // 获取当前选择的背景类型
+    const bgType = document.querySelector('input[name="bgType"]:checked').value;
+    
+    // 如果是纯色背景，不需要检查尺寸
+    if (bgType === 'color') {
+        return;
+    }
+    
+    // 获取主视频元素
+    const mainVideo = document.getElementById('videoThumbnail');
+    if (!mainVideo.videoWidth) {
+        return; // 主视频尚未加载
+    }
+    
+    let bgWidth = 0;
+    let bgHeight = 0;
+    let warningElement = null;
+    
+    // 根据背景类型获取尺寸
+    if (bgType === 'image') {
+        const bgImage = document.getElementById('bgImageThumbnail');
+        if (!bgImage.naturalWidth) {
+            return; // 背景图片尚未加载
+        }
+        
+        bgWidth = bgImage.naturalWidth;
+        bgHeight = bgImage.naturalHeight;
+        
+        // 获取或创建警告元素
+        warningElement = document.getElementById('bgImageSizeWarning');
+        if (!warningElement) {
+            warningElement = document.createElement('div');
+            warningElement.id = 'bgImageSizeWarning';
+            warningElement.className = 'size-warning';
+            document.getElementById('bgImagePreview').appendChild(warningElement);
+        }
+    } else if (bgType === 'video') {
+        const bgVideo = document.getElementById('bgVideoThumbnail');
+        if (!bgVideo.videoWidth) {
+            return; // 背景视频尚未加载
+        }
+        
+        bgWidth = bgVideo.videoWidth;
+        bgHeight = bgVideo.videoHeight;
+        
+        // 获取或创建警告元素
+        warningElement = document.getElementById('bgVideoSizeWarning');
+        if (!warningElement) {
+            warningElement = document.createElement('div');
+            warningElement.id = 'bgVideoSizeWarning';
+            warningElement.className = 'size-warning';
+            document.getElementById('bgVideoPreview').appendChild(warningElement);
+        }
+    }
+    
+    // 检查尺寸是否一致
+    if (bgWidth !== mainVideo.videoWidth || bgHeight !== mainVideo.videoHeight) {
+        warningElement.textContent = `警告：背景尺寸(${bgWidth}×${bgHeight})与视频尺寸(${mainVideo.videoWidth}×${mainVideo.videoHeight})不一致，可能导致画面变形或裁剪`;
+        warningElement.style.display = 'block';
+    } else {
+        warningElement.style.display = 'none';
+    }
+}
+
+// 通用文件上传函数
+async function uploadFile(file, fileType) {
+    try {
+        // 计算MD5
+        const md5 = await calculateMD5(file);
+        
+        // 检查文件是否存在
+        const checkRes = await fetch(`${BASE_URL}/api/query_file/${fileType}/${md5}`);
+        if (checkRes.ok) {
+            const result = await checkRes.json();
+            if (result.file_id) {
+                console.log(`${fileType} 文件已存在，文件ID:`, result.file_id);
+                // 文件已存在时，将上传进度条设置为100%
+                updateUploadProgress(100);
+                return result.file_id;
+            }
+        }
+
+        // 上传文件
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('file_type', fileType);
+        formData.append('file_md5', md5);
+
+        // 使用XMLHttpRequest替代fetch以获取上传进度
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            
+            // 监听上传进度
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    updateUploadProgress(percentComplete);
+                }
+            });
+            
+            // 监听请求完成
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        console.log(`${fileType} 上传成功，文件ID:`, response.file_id);
+                        resolve(response.file_id);
+                    } catch (e) {
+                        reject(new Error(`解析响应失败: ${e.message}`));
+                    }
+                } else {
+                    reject(new Error(`${fileType} 上传失败: 状态码 ${xhr.status}`));
+                }
+            });
+            
+            // 监听错误
+            xhr.addEventListener('error', () => {
+                reject(new Error(`${fileType} 上传网络错误`));
+            });
+            
+            // 监听中止
+            xhr.addEventListener('abort', () => {
+                reject(new Error(`${fileType} 上传被中止`));
+            });
+            
+            // 发送请求
+            xhr.open('POST', `${BASE_URL}/api/upload-file`);
+            xhr.send(formData);
+        });
+    } catch (error) {
+        console.error(`${fileType} 上传失败:`, error);
+        return null;
+    }
+}
+
+// 添加更新上传进度的函数
+function updateUploadProgress(percent) {
+    const progressBar = document.getElementById('uploadProgress');
+    progressBar.style.width = `${percent}%`;
+    progressBar.textContent = `${Math.round(percent)}%`;
+}
+
+// 修改submitTask函数以重置进度条
+async function submitTask() {
+    // 禁用所有表单控件
+    setFormDisabled(true);
+    
+    // 显示进度容器并重置进度条
+    document.querySelector('.progress-container').style.display = 'block';
+    updateUploadProgress(0);
+    
+    const formData = new FormData();
+    
+    // 获取视频文件并上传
+    const videoFile = document.getElementById('videoFile').files[0];
+    if (videoFile) {
+        const videoId = await uploadFile(videoFile, 'video');
+        if (videoId) {
+            formData.append('video_id', videoId);
+        } else {
+            alert('视频上传失败');
+            document.querySelector('.progress-container').style.display = 'none';
+            setFormDisabled(false);
+            return;
+        }
+    } else {
+        alert('请选择视频文件');
+        document.querySelector('.progress-container').style.display = 'none';
+        setFormDisabled(false);
+        return;
+    }
+    
+    // 获取选中的背景类型
+    const bgType = document.querySelector('input[name="bgType"]:checked').value;
+    formData.append('background_type', bgType);
+    
+    if (bgType === 'color') {
+        formData.append('background_color', document.getElementById('bgColor').value);
+    } else if (bgType === 'image') {
+        const bgImage = document.getElementById('bgImage').files[0];
+        if (bgImage) {
+            // 上传背景图片（如果尚未上传）
+            const bgImageId = await uploadFile(bgImage, 'image');
+            if (bgImageId) {
+                formData.append('background_image_id', bgImageId);
+            } else {
+                alert('背景图片上传失败');
+                document.querySelector('.progress-container').style.display = 'none';
+                setFormDisabled(false);
+                return;
+            }
+        } else {
+            alert('请选择背景图片');
+            document.querySelector('.progress-container').style.display = 'none';
+            setFormDisabled(false);
+            return;
+        }
+    } else if (bgType === 'video') {
+        const bgVideo = document.getElementById('bgVideo').files[0];
+        if (bgVideo) {
+            // 上传背景视频（如果尚未上传）
+            const bgVideoId = await uploadFile(bgVideo, 'background_video');
+            if (bgVideoId) {
+                formData.append('background_video_id', bgVideoId);
+            } else {
+                alert('背景视频上传失败');
+                document.querySelector('.progress-container').style.display = 'none';
+                setFormDisabled(false);
+                return;
+            }
+        } else {
+            alert('请选择背景视频');
+            document.querySelector('.progress-container').style.display = 'none';
+            setFormDisabled(false);
+            return;
+        }
+    }
+
+    try {
+        const res = await fetch(`${BASE_URL}/api/submit-task`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await res.json();
+        if (!result.task_id) throw new Error('任务提交失败');
+        
+        // 开始轮询任务进度
+        pollTaskProgress(result.task_id);
+    } catch (error) {
+        alert(error.message);
+        document.querySelector('.progress-container').style.display = 'none';
+        setFormDisabled(false);
+    }
+}
+
+// 需要添加calculateMD5函数（如果尚未定义）
+async function calculateMD5(file) {
+    return new Promise((resolve, reject) => {
+        const blobSlice = File.prototype.slice || File.prototype.mozSlice || File.prototype.webkitSlice;
+        const chunkSize = 2097152; // 2MB
+        const chunks = Math.ceil(file.size / chunkSize);
+        const spark = new SparkMD5.ArrayBuffer();
+        const fileReader = new FileReader();
+        let currentChunk = 0;
+
+        fileReader.onload = function(e) {
+            spark.append(e.target.result);
+            currentChunk++;
+
+            if (currentChunk < chunks) {
+                loadNext();
+            } else {
+                resolve(spark.end());
+            }
+        };
+
+        fileReader.onerror = function() {
+            reject(new Error('MD5计算失败'));
+        };
+
+        function loadNext() {
+            const start = currentChunk * chunkSize;
+            const end = ((start + chunkSize) >= file.size) ? file.size : start + chunkSize;
+            fileReader.readAsArrayBuffer(blobSlice.call(file, start, end));
+        }
+
+        loadNext();
+    });
+}
+
+function pollTaskProgress(taskId) {
+    const progressBar = document.getElementById('taskProgress');
+    let lastProgress = 0;
+
+    const interval = setInterval(async () => {
+        try {
+            const res = await fetch(`${BASE_URL}/api/progress/${taskId}`);
+            const data = await res.json();
+            
+            if (data.status === 'completed') {
+                clearInterval(interval);
+                showDownloadLink(taskId);
+                setFormDisabled(false); // 恢复表单控件
+            } else if (data.status === 'error') {
+                clearInterval(interval);
+                setFormDisabled(false); // 恢复表单控件
+                throw new Error('任务处理失败');
+            }
+            
+            const progress = data.progress || 0;
+            const delta = progress - lastProgress;
+            lastProgress = progress;
+            
+            progressBar.style.width = `${progress}%`;
+            progressBar.textContent = `${Math.round(progress)}%`;
+            
+        } catch (error) {
+            clearInterval(interval);
+            alert(error.message);
+            setFormDisabled(false); // 恢复表单控件
+        }
+    }, 3000);
+}
+
+// 添加设置表单禁用状态的函数
+function setFormDisabled(disabled) {
+    const form = document.getElementById('uploadForm');
+    if (disabled) {
+        form.classList.add('form-disabled');
+    } else {
+        form.classList.remove('form-disabled');
+    }
+    
+    // 禁用或启用所有输入元素
+    const inputs = form.querySelectorAll('input, button, select, textarea');
+    inputs.forEach(input => {
+        input.disabled = disabled;
+    });
+}
+
+function showDownloadLink(taskId) {
+    const downloadLink = document.getElementById('downloadLink');
+    downloadLink.href = `${BASE_URL}/api/download/${taskId}`;
+    downloadLink.style.display = 'inline-block';
+    downloadLink.download = `processed_${taskId}.mp4`;
+}
+
+// 事件监听
+document.getElementById('uploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    submitTask();
+});
+</script>
+</body>
+</html>
+

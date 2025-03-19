@@ -1,0 +1,22 @@
+.progress-container {
+    margin: 2rem 0;
+    display: none;
+}
+
+#downloadSection {
+    margin-top: 2rem;
+}
+
+/* 添加禁用状态的样式 */
+.form-disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* 添加尺寸不一致警告样式 */
+.size-warning {
+    color: #dc3545;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+    display: none;
+}
