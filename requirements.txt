@@ -5,7 +5,8 @@ python-multipart
 
 # 数据处理
 numpy<2
-torch==2.5.1
+# torch==2.5.1
+torch
 torchvision
 Pillow
 
