@@ -1,0 +1,37 @@
+# Web 框架
+fastapi
+uvicorn
+python-multipart
+
+# 数据处理
+numpy<2
+torch==2.5.1
+torchvision
+Pillow
+
+# 视频处理
+ffmpeg-python
+opencv-python
+moviepy
+pydub
+
+# 模型相关
+transformers
+huggingface_hub>0.25
+accelerate
+
+# 图像处理
+timm
+kornia
+scikit-image
+einops
+loadimg>=0.1.1
+scipy
+
+# 工具和辅助库
+gradio
+spaces
+tqdm
+prettytable
+typing
+schedule
